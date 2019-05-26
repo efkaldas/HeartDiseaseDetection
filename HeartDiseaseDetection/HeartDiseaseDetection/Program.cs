@@ -1,10 +1,25 @@
 ﻿using System;
+using System.Globalization;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using HeartDiseasePredictionConsoleApp.DataStructures;
 using Microsoft.ML;
+using Microsoft.ML.Data;
 
 namespace HeartDiseasePredictionConsoleApp
 {
+    public class TransformedData
+    {
+        public float[] NumericVector { get; set; }
+    }
+
+    public class InputData
+    {
+        [VectorType(14)]
+        public float[] NumericVector { get; set; }
+    }
+
     public class Program
     {
         private static string BaseDatasetsRelativePath = @"../../../../Data";
@@ -23,12 +38,176 @@ namespace HeartDiseasePredictionConsoleApp
         public static void Main(string[] args)
         {
             var mlContext = new MLContext();
-            BuildTrainEvaluateAndSaveModel(mlContext);
 
-            TestPrediction(mlContext);
+            bool naudojaNaujaMetoda = true;
+            if (naudojaNaujaMetoda)
+            {
+                BuildTrainEvaluateAndSaveModelNEZINAU(mlContext);
+            }
+            else
+            {
+                BuildTrainEvaluateAndSaveModel(mlContext);
+                TestPrediction(mlContext);
+            }
 
             Console.WriteLine("=============== End of process, hit any key to finish ===============");
             Console.ReadKey();
+        }
+
+        /// <summary>
+        /// Returns a few rows of data.
+        /// </summary>
+        private static IEnumerable<InputData> GetTrainData()
+        {
+            var trainData = new List<InputData>();
+            string[] trainDataLines = File.ReadAllLines(TrainDataPath);
+            for (int i = 0; i < trainDataLines.Length; i++)
+            {
+                string[] values = trainDataLines[i].Split(';', StringSplitOptions.RemoveEmptyEntries);
+                float[] numericVector = new float[values.Length];
+                for (int j = 0; j < values.Length; j++)
+                {
+                    numericVector[j] = float.Parse(values[j], CultureInfo.InvariantCulture.NumberFormat);
+                }
+                InputData inputdata = new InputData
+                {
+                    NumericVector = numericVector
+                };
+                trainData.Add(inputdata);
+            }
+            return trainData;
+        }
+
+        /// <summary>
+        /// Returns a few rows of data.
+        /// </summary>
+        private static IEnumerable<InputData> GetTestData()
+        {
+            var testData = new List<InputData>();
+            string[] testDataLines = File.ReadAllLines(TestDataPath);
+            for (int i = 0; i < testDataLines.Length; i++)
+            {
+                string[] values = testDataLines[i].Split(';', StringSplitOptions.RemoveEmptyEntries);
+                float[] numericVector = new float[values.Length];
+                for (int j = 0; j < values.Length; j++)
+                {
+                    numericVector[j] = float.Parse(values[j], CultureInfo.InvariantCulture.NumberFormat);
+                }
+                InputData inputdata = new InputData
+                {
+                    NumericVector = numericVector
+                };
+                testData.Add(inputdata);
+            }
+            return testData;
+        }
+
+        /*
+         * !!! Nežinau, ar gerai pritaikiau dimensijų sumažinimą, tai kol kas sukūriau atskirą metodą :D
+         * !!! Trūksta mašininio mokymosi metodo
+         */
+        private static void BuildTrainEvaluateAndSaveModelNEZINAU(MLContext mlContext)
+        {
+            // Reikšmės ilgis spausdinant
+            int valueLength = 4;
+
+            // Spausdinamų duomenų (eilučių) kiekis
+            int dataPrintCount = 10;
+
+            // Slenkstis
+            int threshold = 100;
+
+            // Get a small dataset as an IEnumerable and convert it to an IDataView.
+            var rawTrainData = GetTrainData();
+            var rawTestData = GetTestData();
+
+            // STEP 1: Common data loading configuration
+            var trainingDataView = mlContext.Data.LoadFromEnumerable(rawTrainData);
+            var testDataView = mlContext.Data.LoadFromEnumerable(rawTestData);
+
+            // Spausdina duomenis PRIEŠ dimensijų sumažinimą
+            Console.WriteLine("=============== Input data BEFORE FeatureSelection(threshold: {0}) ===============", threshold);
+            int count = 0;
+            foreach (var item in rawTrainData)
+            {
+                count++;
+                if (count <= dataPrintCount)
+                {
+                    Console.Write("|");
+                    Console.WriteLine(string.Concat(item.NumericVector.Select(i => string.Format("{0, " + valueLength + "}|", i))));
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            // STEP 2: We will use the SelectFeaturesBasedOnCount transform estimator, to retain only those slots which have at least 'count' non-default values per slot
+            // FeatureSelection(): dimensijų sumažinimas (nežinau, ar gerai padariau)
+            var pipeline = mlContext.Transforms.FeatureSelection.SelectFeaturesBasedOnCount(new InputOutputColumnPair[] { new InputOutputColumnPair("NumericVector") }, count: threshold);
+
+            Console.WriteLine("");
+            Console.WriteLine("");
+            Console.WriteLine("=============== Training the model ===============");
+            ITransformer trainedModel = pipeline.Fit(trainingDataView);
+            Console.WriteLine("");
+            Console.WriteLine("");
+            Console.WriteLine("=============== Finish the train model. Push Enter ===============");
+            Console.WriteLine("");
+            Console.WriteLine("");
+
+            Console.WriteLine("===== Evaluating Model's accuracy with Test data =====");
+            Console.WriteLine("");
+            var predictions = trainedModel.Transform(testDataView);
+
+            var convertedData = mlContext.Data.CreateEnumerable<TransformedData>(predictions, true);
+
+            // Spausdina duomenis PO dimensijų sumažinimo
+            Console.WriteLine("");
+            Console.WriteLine("=============== Input data AFTER FeatureSelection(threshold: {0}) ===============", threshold);
+            count = 0;
+            foreach (var item in convertedData)
+            {
+                count++;
+                if (count <= dataPrintCount)
+                {
+                    Console.Write("|");
+                    Console.WriteLine(string.Concat(item.NumericVector.Select(i => string.Format("{0, " + valueLength + "}|", i))));
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            // !!! metrics neveikia, dar nežinau kaip sutvarkyt
+            /*
+            var metrics = mlContext.BinaryClassification.Evaluate(data: predictions, labelColumnName: "Label", scoreColumnName: "Score");
+            Console.WriteLine("");
+            Console.WriteLine("");
+            Console.WriteLine($"************************************************************");
+            Console.WriteLine($"*       Metrics for {trainedModel.ToString()} binary classification model      ");
+            Console.WriteLine($"*-----------------------------------------------------------");
+            Console.WriteLine($"*       Accuracy: {metrics.Accuracy:P2}");
+            Console.WriteLine($"*       Area Under Roc Curve:      {metrics.AreaUnderRocCurve:P2}");
+            Console.WriteLine($"*       Area Under PrecisionRecall Curve:  {metrics.AreaUnderPrecisionRecallCurve:P2}");
+            Console.WriteLine($"*       F1Score:  {metrics.F1Score:P2}");
+            Console.WriteLine($"*       LogLoss:  {metrics.LogLoss:#.##}");
+            Console.WriteLine($"*       LogLossReduction:  {metrics.LogLossReduction:#.##}");
+            Console.WriteLine($"*       PositivePrecision:  {metrics.PositivePrecision:#.##}");
+            Console.WriteLine($"*       PositiveRecall:  {metrics.PositiveRecall:#.##}");
+            Console.WriteLine($"*       NegativePrecision:  {metrics.NegativePrecision:#.##}");
+            Console.WriteLine($"*       NegativeRecall:  {metrics.NegativeRecall:P2}");
+            Console.WriteLine($"************************************************************");
+            */
+            Console.WriteLine("");
+            Console.WriteLine("");
+
+            Console.WriteLine("=============== Saving the model to a file ===============");
+            mlContext.Model.Save(trainedModel, trainingDataView.Schema, ModelPath);
+            Console.WriteLine("");
+            Console.WriteLine("");
+            Console.WriteLine("=============== Model Saved ============= ");
         }
 
         private static void BuildTrainEvaluateAndSaveModel(MLContext mlContext)
