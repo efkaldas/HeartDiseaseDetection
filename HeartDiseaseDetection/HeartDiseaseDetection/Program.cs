@@ -73,7 +73,8 @@ namespace HeartDiseasePredictionConsoleApp
             else
             {
                 //BuildTrainEvaluateAndSaveModel(mlContext);
-                BuildTrainEvaluateAndSaveModelGam(mlContext);
+                //BuildTrainEvaluateAndSaveModelGam(mlContext);
+                BuildTrainEvaluateAndSaveModelLbfgs(mlContext);
                 TestPrediction(mlContext);
             }
 
@@ -349,6 +350,53 @@ namespace HeartDiseasePredictionConsoleApp
             // STEP 2: Concatenate the features and set the training algorithm
             var pipeline = mlContext.Transforms.Concatenate("Features", "Age", "Sex", "Cp", "TrestBps", "Chol", "Fbs", "RestEcg", "Thalac", "Exang", "OldPeak", "Slope", "Ca", "Thal")
                 .Append(mlContext.BinaryClassification.Trainers.Gam(labelColumnName: "Label", featureColumnName: "Features"));
+
+            Console.WriteLine("=============== Training the model ===============");
+            ITransformer trainedModel = pipeline.Fit(trainingDataView);
+            Console.WriteLine("");
+            Console.WriteLine("");
+            Console.WriteLine("=============== Finish the train model. Push Enter ===============");
+            Console.WriteLine("");
+            Console.WriteLine("");
+
+            Console.WriteLine("===== Evaluating Model's accuracy with Test data =====");
+            var predictions = trainedModel.Transform(testDataView);
+
+            var metrics = mlContext.BinaryClassification.Evaluate(data: predictions, labelColumnName: "Label", scoreColumnName: "Score");
+            Console.WriteLine("");
+            Console.WriteLine("");
+            Console.WriteLine($"************************************************************");
+            Console.WriteLine($"*       Metrics for {trainedModel.ToString()} binary classification model      ");
+            Console.WriteLine($"*-----------------------------------------------------------");
+            Console.WriteLine($"*       Accuracy: {metrics.Accuracy:P2}");
+            Console.WriteLine($"*       Area Under Roc Curve:      {metrics.AreaUnderRocCurve:P2}");
+            Console.WriteLine($"*       Area Under PrecisionRecall Curve:  {metrics.AreaUnderPrecisionRecallCurve:P2}");
+            Console.WriteLine($"*       F1Score:  {metrics.F1Score:P2}");
+            Console.WriteLine($"*       LogLoss:  {metrics.LogLoss:#.##}");
+            Console.WriteLine($"*       LogLossReduction:  {metrics.LogLossReduction:#.##}");
+            Console.WriteLine($"*       PositivePrecision:  {metrics.PositivePrecision:#.##}");
+            Console.WriteLine($"*       PositiveRecall:  {metrics.PositiveRecall:#.##}");
+            Console.WriteLine($"*       NegativePrecision:  {metrics.NegativePrecision:#.##}");
+            Console.WriteLine($"*       NegativeRecall:  {metrics.NegativeRecall:P2}");
+            Console.WriteLine($"************************************************************");
+            Console.WriteLine("");
+            Console.WriteLine("");
+
+            Console.WriteLine("=============== Saving the model to a file ===============");
+            mlContext.Model.Save(trainedModel, trainingDataView.Schema, ModelPath);
+            Console.WriteLine("");
+            Console.WriteLine("");
+            Console.WriteLine("=============== Model Saved ============= ");
+        }
+        private static void BuildTrainEvaluateAndSaveModelLbfgs(MLContext mlContext)
+        {
+            // STEP 1: Common data loading configuration
+            var trainingDataView = mlContext.Data.LoadFromTextFile<HeartData>(TrainDataPath, hasHeader: true, separatorChar: ';');
+            var testDataView = mlContext.Data.LoadFromTextFile<HeartData>(TestDataPath, hasHeader: true, separatorChar: ';');
+
+            // STEP 2: Concatenate the features and set the training algorithm
+            var pipeline = mlContext.Transforms.Concatenate("Features", "Age", "Sex", "Cp", "TrestBps", "Chol", "Fbs", "RestEcg", "Thalac", "Exang", "OldPeak", "Slope", "Ca", "Thal")
+                .Append(mlContext.BinaryClassification.Trainers.LbfgsLogisticRegression(labelColumnName: "Label", featureColumnName: "Features"));
 
             Console.WriteLine("=============== Training the model ===============");
             ITransformer trainedModel = pipeline.Fit(trainingDataView);
