@@ -46,8 +46,6 @@ namespace HeartDiseasePredictionConsoleApp
         // Kryžminės patikros fold count
         private static int foldCount = 5;
 
-        // !!! Nebereikalingas
-        const int crossValidatioN = 10;
 
         private static string BaseDatasetsRelativePath = @"../../../../Data";
         private static string TrainDataRelativePath = $"{BaseDatasetsRelativePath}/HeartTraining.csv";
@@ -71,9 +69,6 @@ namespace HeartDiseasePredictionConsoleApp
             {
                 BuildTrainEvaluateAndSaveModelNEZINAU(mlContext);
                 TestPrediction(mlContext);
-
-                // !!! Nebereikalingas
-                // crossValidation();
             }
             else
             {
@@ -113,30 +108,6 @@ namespace HeartDiseasePredictionConsoleApp
             return data;
         }
 
-        /// <summary>
-        /// !!! Nebereikalingas
-        /// </summary>
-        private static IEnumerable<InputData> GetTestDatacross(int count)
-        {
-            var testData = new List<InputData>();
-            string[] testDataLines = File.ReadAllLines(TestDataPath);
-            int readcount = (int)(testDataLines.Length * (1.0M - (1.0M / crossValidatioN)));
-            for (int i = count; i < testDataLines.Length; i++)
-            {
-                string[] values = testDataLines[i].Split(';', StringSplitOptions.RemoveEmptyEntries);
-                float[] numericVector = new float[values.Length];
-                for (int j = 0; j < values.Length; j++)
-                {
-                    numericVector[j] = float.Parse(values[j], CultureInfo.InvariantCulture.NumberFormat);
-                }
-                InputData inputdata = new InputData
-                {
-                    NumericVector = numericVector
-                };
-                testData.Add(inputdata);
-            }
-            return testData;
-        }
 
         /// <summary>
         /// Gauna likusius stulpelių (atributų) vardus, kurių neatmetė dimensijų sumažinimas.
@@ -404,59 +375,6 @@ namespace HeartDiseasePredictionConsoleApp
             }
 
         }
-        //Veikia ne visai kaip reikia bet dirbam :D
-        private static void crossValidation()
-        {
-            int threshold = 100;
-            // Reikšmės ilgis spausdinant
-            int valueLength = 4;
-            int countt = 0;
-            // Spausdinamų duomenų (eilučių) kiekis
-            int dataPrintCount = 10;
-            for (int x = 0; x < crossValidatioN; x++)
-            {
-                var mlContext = new MLContext();
-                var testData = GetTestDatacross(countt);
-                ITransformer trainedModel = mlContext.Model.Load(ModelPath, out var modelInputSchema);
-                string[] testDataLines = File.ReadAllLines(TestDataPath);
-                var testDataView = mlContext.Data.LoadFromEnumerable(testData);
-                int testDataCount = testDataLines.Length;
-                mlContext.Data.LoadFromEnumerable(testData);
-                int testToRead = testDataCount - (int)(testDataCount * (1.0M - (1.0M / crossValidatioN)));
-
-                for (int i = x * testDataCount; i < x * testDataCount + testDataCount - 2; i++)
-                {
-
-
-                    var predictions = trainedModel.Transform(testDataView);
-
-                    var convertedData = mlContext.Data.CreateEnumerable<TransformedData>(predictions, true);
-
-                    Console.WriteLine("");
-                    Console.WriteLine("=============== Input data AFTER FeatureSelection(threshold: {0}) ===============", threshold);
-                    int count = 0;
-                    foreach (var item in convertedData)
-                    {
-                        count++;
-                        if (count <= dataPrintCount)
-                        {
-                            Console.Write("|");
-                            Console.WriteLine(string.Concat(item.NumericVector.Select(z => string.Format("{0, " + valueLength + "}|", z))));
-                        }
-                        else
-                        {
-                            break;
-                        }
-                    }
-
-
-
-                }
-                countt += testToRead;
-            }
-        }
-
-
         public static string GetAbsolutePath(string relativePath)
         {
             FileInfo _dataRoot = new FileInfo(typeof(Program).Assembly.Location);
