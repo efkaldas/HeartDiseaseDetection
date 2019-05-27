@@ -77,9 +77,34 @@ namespace HeartDiseasePredictionConsoleApp
                 BuildTrainEvaluateAndSaveModelLbfgs(mlContext);
                 TestPrediction(mlContext);
             }
-
+            ClusteringKmeans();
             Console.WriteLine("=============== End of process, hit any key to finish ===============");
             Console.ReadKey();
+        }
+        public static void ClusteringKmeans()
+        {
+            var mlContext = new MLContext(seed: 0);
+            IDataView dataView = mlContext.Data.LoadFromTextFile<HeartData>(TrainDataRelativePath, hasHeader: false, separatorChar: ';');
+            string featuresColumnName = "Features";
+            var pipeline = mlContext.Transforms.Concatenate(featuresColumnName, "Age", "Sex", "Cp", "TrestBps", "Chol", "Fbs", "RestEcg", "Thalac", "Exang", "OldPeak", "Slope", "Ca", "Thal")
+                .Append(mlContext.Clustering.Trainers.KMeans(featuresColumnName, numberOfClusters: 3));
+            var model = pipeline.Fit(dataView);
+
+            using (var fileStream = new FileStream(ModelRelativePath, FileMode.Create, FileAccess.Write, FileShare.Write))
+            {
+                mlContext.Model.Save(model, dataView.Schema, fileStream);
+            }
+
+
+            var predictor = mlContext.Model.CreatePredictionEngine<HeartData, HeartPredictionClusters>(model);
+            for (int i = 0; i < HeartSampleData.heartDataList.Count; i++)
+            {
+
+                var prediction = predictor.Predict(HeartSampleData.heartDataList[i]);
+
+                Console.WriteLine($"Disease Prediction {i + 1}");
+                Console.WriteLine($"Probabilities: {prediction.Probability[0] / 100}");
+            }
         }
 
         /// <summary>
