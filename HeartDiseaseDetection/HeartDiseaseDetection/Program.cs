@@ -46,6 +46,24 @@ namespace HeartDiseasePredictionConsoleApp
         // Kryžminės patikros fold count
         private static int foldCount = 5;
 
+        // k-means metodo cluster count
+        private static int clusterCount = 3;
+
+        // Metodo numeris
+        // methodNumber =  1: FieldAwareFactorizationMachine()
+        // methodNumber =  2: AveragedPerceptron()
+        // methodNumber =  3: LbfgsLogisticRegression()
+        // methodNumber =  4: LinearSvm()
+        // methodNumber =  5: Prior()
+        // methodNumber =  6: SdcaLogisticRegression()
+        // methodNumber =  7: SdcaNonCalibrated()
+        // methodNumber =  8: SgdCalibrated()
+        // methodNumber =  9: SgdNonCalibrated()
+        // methodNumber = 10: FastForest()
+        // methodNumber = 11: FastTree()
+        // methodNumber = 12: Gam()
+        // methodNumber = 13: KMeans()
+        private static int methodNumber = 11;
 
         private static string BaseDatasetsRelativePath = @"../../../../Data";
         private static string TrainDataRelativePath = $"{BaseDatasetsRelativePath}/HeartTraining.csv";
@@ -65,7 +83,12 @@ namespace HeartDiseasePredictionConsoleApp
             var mlContext = new MLContext();
 
             bool naudojaNaujaMetoda = false;
-            if (naudojaNaujaMetoda)
+            bool naudojaClusteringKmeans = true;
+            if (naudojaClusteringKmeans)
+            {
+                ClusteringKmeans();
+            }
+            else if (naudojaNaujaMetoda)
             {
                 BuildTrainEvaluateAndSaveModelNEZINAU(mlContext);
                 TestPrediction(mlContext);
@@ -77,10 +100,11 @@ namespace HeartDiseasePredictionConsoleApp
                 BuildTrainEvaluateAndSaveModelLbfgs(mlContext);
                 TestPrediction(mlContext);
             }
-            ClusteringKmeans();
+
             Console.WriteLine("=============== End of process, hit any key to finish ===============");
             Console.ReadKey();
         }
+
         public static void ClusteringKmeans()
         {
             var mlContext = new MLContext(seed: 0);
@@ -261,62 +285,851 @@ namespace HeartDiseasePredictionConsoleApp
             // Nauji duomenys po dimensijų sumažinimo
             var newTrainingDataView = mlContext.Data.LoadFromTextFile<HeartData>(TrainDataPath, hasHeader: true, separatorChar: ';');
             var newTestDataView = mlContext.Data.LoadFromTextFile<HeartData>(TestDataPath, hasHeader: true, separatorChar: ';');
-            var newPipeLine = mlContext.Transforms.Concatenate("Features", remainingColumns).Append(mlContext.BinaryClassification.Trainers.FastTree(labelColumnName: "Label", featureColumnName: "Features"));
 
-            // Evaluate the model using cross-validation
-            // Cross-validation splits our dataset into 'folds', trains a model on some folds and evaluates it on the remaining fold
-            Console.WriteLine("");
-            Console.WriteLine("");
-            Console.WriteLine("=============== Cross-validating to get model's accuracy metrics ===============");
-            var crossValidationResults = mlContext.BinaryClassification.CrossValidate(data: newTrainingDataView, estimator: newPipeLine, numberOfFolds: foldCount);
-            IEnumerable<double> accuracy = crossValidationResults.Select(fold => fold.Metrics.Accuracy);
-            count = 0;
-            foreach (var acc in accuracy)
+            double crossValidationSum;
+            double crossValidationAverage;
+
+            // Metodo numeris
+            // methodNumber =  1: FieldAwareFactorizationMachine()
+            // methodNumber =  2: AveragedPerceptron()
+            // methodNumber =  3: LbfgsLogisticRegression()
+            // methodNumber =  4: LinearSvm()
+            // methodNumber =  5: Prior()
+            // methodNumber =  6: SdcaLogisticRegression()
+            // methodNumber =  7: SdcaNonCalibrated()
+            // methodNumber =  8: SgdCalibrated()
+            // methodNumber =  9: SgdNonCalibrated()
+            // methodNumber = 10: FastForest()
+            // methodNumber = 11: FastTree()
+            // methodNumber = 12: Gam()
+            // methodNumber = 13: KMeans()
+            if (methodNumber == 1)
             {
-                count++;
-                Console.WriteLine("Accuracy (k = {0}): {1} = {2} %", count, acc, acc * 100);
+                var newPipeLine = mlContext.Transforms.Concatenate("Features", remainingColumns).Append(mlContext.BinaryClassification.Trainers.FieldAwareFactorizationMachine(labelColumnName: "Label", featureColumnName: "Features"));
+
+                // Evaluate the model using cross-validation
+                // Cross-validation splits our dataset into 'folds', trains a model on some folds and evaluates it on the remaining fold
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Cross-validating to get model's accuracy metrics ===============");
+                var crossValidationResults = mlContext.BinaryClassification.CrossValidate(data: newTrainingDataView, estimator: newPipeLine, numberOfFolds: foldCount);
+                IEnumerable<double> accuracy = crossValidationResults.Select(fold => fold.Metrics.Accuracy);
+                count = 0;
+                crossValidationSum = 0;
+                crossValidationAverage = 0;
+                foreach (var acc in accuracy)
+                {
+                    count++;
+                    crossValidationSum += acc;
+                    Console.WriteLine("Accuracy (k = {0}): {1} = {2} %", count, acc, acc * 100);
+                }
+                crossValidationAverage = crossValidationSum / accuracy.Count();
+                Console.WriteLine("Cross validation average: {0} = {1} %", crossValidationAverage, crossValidationAverage * 100);
+
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Training the model ===============");
+                ITransformer trainedModel = newPipeLine.Fit(newTrainingDataView);
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Finish the train model. Push Enter ===============");
+                Console.WriteLine("");
+                Console.WriteLine("");
+
+                Console.WriteLine("===== Evaluating Model's accuracy with Test data =====");
+                var predictions = trainedModel.Transform(newTestDataView);
+
+                var metrics = mlContext.BinaryClassification.Evaluate(data: predictions, labelColumnName: "Label", scoreColumnName: "Score");
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine($"************************************************************");
+                Console.WriteLine($"*       Metrics for FieldAwareFactorizationMachine()      ");
+                Console.WriteLine($"*-----------------------------------------------------------");
+                Console.WriteLine($"*       Accuracy: {metrics.Accuracy:P2}");
+                Console.WriteLine($"*       Area Under Roc Curve:      {metrics.AreaUnderRocCurve:P2}");
+                Console.WriteLine($"*       Area Under PrecisionRecall Curve:  {metrics.AreaUnderPrecisionRecallCurve:P2}");
+                Console.WriteLine($"*       F1Score:  {metrics.F1Score:P2}");
+                Console.WriteLine($"*       LogLoss:  {metrics.LogLoss:#.##}");
+                Console.WriteLine($"*       LogLossReduction:  {metrics.LogLossReduction:#.##}");
+                Console.WriteLine($"*       PositivePrecision:  {metrics.PositivePrecision:#.##}");
+                Console.WriteLine($"*       PositiveRecall:  {metrics.PositiveRecall:#.##}");
+                Console.WriteLine($"*       NegativePrecision:  {metrics.NegativePrecision:#.##}");
+                Console.WriteLine($"*       NegativeRecall:  {metrics.NegativeRecall:P2}");
+                Console.WriteLine($"************************************************************");
+                Console.WriteLine("");
+                Console.WriteLine("");
+
+                Console.WriteLine("=============== Saving the model to a file ===============");
+                mlContext.Model.Save(trainedModel, newTrainingDataView.Schema, ModelPath);
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Model Saved ============= ");
+                Console.WriteLine("");
+                Console.WriteLine("");
             }
+            else if (methodNumber == 2)
+            {
+                var newPipeLine = mlContext.Transforms.Concatenate("Features", remainingColumns).Append(mlContext.BinaryClassification.Trainers.AveragedPerceptron(labelColumnName: "Label", featureColumnName: "Features"));
 
-            Console.WriteLine("");
-            Console.WriteLine("");
-            Console.WriteLine("=============== Training the model ===============");
-            ITransformer trainedModel = newPipeLine.Fit(newTrainingDataView);
-            Console.WriteLine("");
-            Console.WriteLine("");
-            Console.WriteLine("=============== Finish the train model. Push Enter ===============");
-            Console.WriteLine("");
-            Console.WriteLine("");
+                // Evaluate the model using cross-validation
+                // Cross-validation splits our dataset into 'folds', trains a model on some folds and evaluates it on the remaining fold
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Cross-validating to get model's accuracy metrics ===============");
+                var crossValidationResults = mlContext.BinaryClassification.CrossValidate(data: newTrainingDataView, estimator: newPipeLine, numberOfFolds: foldCount);
+                IEnumerable<double> accuracy = crossValidationResults.Select(fold => fold.Metrics.Accuracy);
+                count = 0;
+                crossValidationSum = 0;
+                crossValidationAverage = 0;
+                foreach (var acc in accuracy)
+                {
+                    count++;
+                    crossValidationSum += acc;
+                    Console.WriteLine("Accuracy (k = {0}): {1} = {2} %", count, acc, acc * 100);
+                }
+                crossValidationAverage = crossValidationSum / accuracy.Count();
+                Console.WriteLine("Cross validation average: {0} = {1} %", crossValidationAverage, crossValidationAverage * 100);
 
-            Console.WriteLine("===== Evaluating Model's accuracy with Test data =====");
-            var predictions = trainedModel.Transform(newTestDataView);
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Training the model ===============");
+                ITransformer trainedModel = newPipeLine.Fit(newTrainingDataView);
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Finish the train model. Push Enter ===============");
+                Console.WriteLine("");
+                Console.WriteLine("");
 
-            var metrics = mlContext.BinaryClassification.Evaluate(data: predictions, labelColumnName: "Label", scoreColumnName: "Score");
-            Console.WriteLine("");
-            Console.WriteLine("");
-            Console.WriteLine($"************************************************************");
-            Console.WriteLine($"*       Metrics for {trainedModel.ToString()} binary classification model      ");
-            Console.WriteLine($"*-----------------------------------------------------------");
-            Console.WriteLine($"*       Accuracy: {metrics.Accuracy:P2}");
-            Console.WriteLine($"*       Area Under Roc Curve:      {metrics.AreaUnderRocCurve:P2}");
-            Console.WriteLine($"*       Area Under PrecisionRecall Curve:  {metrics.AreaUnderPrecisionRecallCurve:P2}");
-            Console.WriteLine($"*       F1Score:  {metrics.F1Score:P2}");
-            Console.WriteLine($"*       LogLoss:  {metrics.LogLoss:#.##}");
-            Console.WriteLine($"*       LogLossReduction:  {metrics.LogLossReduction:#.##}");
-            Console.WriteLine($"*       PositivePrecision:  {metrics.PositivePrecision:#.##}");
-            Console.WriteLine($"*       PositiveRecall:  {metrics.PositiveRecall:#.##}");
-            Console.WriteLine($"*       NegativePrecision:  {metrics.NegativePrecision:#.##}");
-            Console.WriteLine($"*       NegativeRecall:  {metrics.NegativeRecall:P2}");
-            Console.WriteLine($"************************************************************");
-            Console.WriteLine("");
-            Console.WriteLine("");
+                Console.WriteLine("===== Evaluating Model's accuracy with Test data =====");
+                var predictions = trainedModel.Transform(newTestDataView);
 
-            Console.WriteLine("=============== Saving the model to a file ===============");
-            mlContext.Model.Save(trainedModel, newTrainingDataView.Schema, ModelPath);
-            Console.WriteLine("");
-            Console.WriteLine("");
-            Console.WriteLine("=============== Model Saved ============= ");
-            Console.WriteLine("");
-            Console.WriteLine("");
+                var metrics = mlContext.BinaryClassification.Evaluate(data: predictions, labelColumnName: "Label", scoreColumnName: "Score");
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine($"************************************************************");
+                Console.WriteLine($"*       Metrics for AveragedPerceptron()      ");
+                Console.WriteLine($"*-----------------------------------------------------------");
+                Console.WriteLine($"*       Accuracy: {metrics.Accuracy:P2}");
+                Console.WriteLine($"*       Area Under Roc Curve:      {metrics.AreaUnderRocCurve:P2}");
+                Console.WriteLine($"*       Area Under PrecisionRecall Curve:  {metrics.AreaUnderPrecisionRecallCurve:P2}");
+                Console.WriteLine($"*       F1Score:  {metrics.F1Score:P2}");
+                Console.WriteLine($"*       LogLoss:  {metrics.LogLoss:#.##}");
+                Console.WriteLine($"*       LogLossReduction:  {metrics.LogLossReduction:#.##}");
+                Console.WriteLine($"*       PositivePrecision:  {metrics.PositivePrecision:#.##}");
+                Console.WriteLine($"*       PositiveRecall:  {metrics.PositiveRecall:#.##}");
+                Console.WriteLine($"*       NegativePrecision:  {metrics.NegativePrecision:#.##}");
+                Console.WriteLine($"*       NegativeRecall:  {metrics.NegativeRecall:P2}");
+                Console.WriteLine($"************************************************************");
+                Console.WriteLine("");
+                Console.WriteLine("");
+
+                Console.WriteLine("=============== Saving the model to a file ===============");
+                mlContext.Model.Save(trainedModel, newTrainingDataView.Schema, ModelPath);
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Model Saved ============= ");
+                Console.WriteLine("");
+                Console.WriteLine("");
+            }
+            else if (methodNumber == 3)
+            {
+                var newPipeLine = mlContext.Transforms.Concatenate("Features", remainingColumns).Append(mlContext.BinaryClassification.Trainers.LbfgsLogisticRegression(labelColumnName: "Label", featureColumnName: "Features"));
+
+                // Evaluate the model using cross-validation
+                // Cross-validation splits our dataset into 'folds', trains a model on some folds and evaluates it on the remaining fold
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Cross-validating to get model's accuracy metrics ===============");
+                var crossValidationResults = mlContext.BinaryClassification.CrossValidate(data: newTrainingDataView, estimator: newPipeLine, numberOfFolds: foldCount);
+                IEnumerable<double> accuracy = crossValidationResults.Select(fold => fold.Metrics.Accuracy);
+                count = 0;
+                crossValidationSum = 0;
+                crossValidationAverage = 0;
+                foreach (var acc in accuracy)
+                {
+                    count++;
+                    crossValidationSum += acc;
+                    Console.WriteLine("Accuracy (k = {0}): {1} = {2} %", count, acc, acc * 100);
+                }
+                crossValidationAverage = crossValidationSum / accuracy.Count();
+                Console.WriteLine("Cross validation average: {0} = {1} %", crossValidationAverage, crossValidationAverage * 100);
+
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Training the model ===============");
+                ITransformer trainedModel = newPipeLine.Fit(newTrainingDataView);
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Finish the train model. Push Enter ===============");
+                Console.WriteLine("");
+                Console.WriteLine("");
+
+                Console.WriteLine("===== Evaluating Model's accuracy with Test data =====");
+                var predictions = trainedModel.Transform(newTestDataView);
+
+                var metrics = mlContext.BinaryClassification.Evaluate(data: predictions, labelColumnName: "Label", scoreColumnName: "Score");
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine($"************************************************************");
+                Console.WriteLine($"*       Metrics for LbfgsLogisticRegression()      ");
+                Console.WriteLine($"*-----------------------------------------------------------");
+                Console.WriteLine($"*       Accuracy: {metrics.Accuracy:P2}");
+                Console.WriteLine($"*       Area Under Roc Curve:      {metrics.AreaUnderRocCurve:P2}");
+                Console.WriteLine($"*       Area Under PrecisionRecall Curve:  {metrics.AreaUnderPrecisionRecallCurve:P2}");
+                Console.WriteLine($"*       F1Score:  {metrics.F1Score:P2}");
+                Console.WriteLine($"*       LogLoss:  {metrics.LogLoss:#.##}");
+                Console.WriteLine($"*       LogLossReduction:  {metrics.LogLossReduction:#.##}");
+                Console.WriteLine($"*       PositivePrecision:  {metrics.PositivePrecision:#.##}");
+                Console.WriteLine($"*       PositiveRecall:  {metrics.PositiveRecall:#.##}");
+                Console.WriteLine($"*       NegativePrecision:  {metrics.NegativePrecision:#.##}");
+                Console.WriteLine($"*       NegativeRecall:  {metrics.NegativeRecall:P2}");
+                Console.WriteLine($"************************************************************");
+                Console.WriteLine("");
+                Console.WriteLine("");
+
+                Console.WriteLine("=============== Saving the model to a file ===============");
+                mlContext.Model.Save(trainedModel, newTrainingDataView.Schema, ModelPath);
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Model Saved ============= ");
+                Console.WriteLine("");
+                Console.WriteLine("");
+            }
+            else if (methodNumber == 4)
+            {
+                var newPipeLine = mlContext.Transforms.Concatenate("Features", remainingColumns).Append(mlContext.BinaryClassification.Trainers.LinearSvm(labelColumnName: "Label", featureColumnName: "Features"));
+
+                // Evaluate the model using cross-validation
+                // Cross-validation splits our dataset into 'folds', trains a model on some folds and evaluates it on the remaining fold
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Cross-validating to get model's accuracy metrics ===============");
+                var crossValidationResults = mlContext.BinaryClassification.CrossValidate(data: newTrainingDataView, estimator: newPipeLine, numberOfFolds: foldCount);
+                IEnumerable<double> accuracy = crossValidationResults.Select(fold => fold.Metrics.Accuracy);
+                count = 0;
+                crossValidationSum = 0;
+                crossValidationAverage = 0;
+                foreach (var acc in accuracy)
+                {
+                    count++;
+                    crossValidationSum += acc;
+                    Console.WriteLine("Accuracy (k = {0}): {1} = {2} %", count, acc, acc * 100);
+                }
+                crossValidationAverage = crossValidationSum / accuracy.Count();
+                Console.WriteLine("Cross validation average: {0} = {1} %", crossValidationAverage, crossValidationAverage * 100);
+
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Training the model ===============");
+                ITransformer trainedModel = newPipeLine.Fit(newTrainingDataView);
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Finish the train model. Push Enter ===============");
+                Console.WriteLine("");
+                Console.WriteLine("");
+
+                Console.WriteLine("===== Evaluating Model's accuracy with Test data =====");
+                var predictions = trainedModel.Transform(newTestDataView);
+
+                var metrics = mlContext.BinaryClassification.Evaluate(data: predictions, labelColumnName: "Label", scoreColumnName: "Score");
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine($"************************************************************");
+                Console.WriteLine($"*       Metrics for LinearSvm()      ");
+                Console.WriteLine($"*-----------------------------------------------------------");
+                Console.WriteLine($"*       Accuracy: {metrics.Accuracy:P2}");
+                Console.WriteLine($"*       Area Under Roc Curve:      {metrics.AreaUnderRocCurve:P2}");
+                Console.WriteLine($"*       Area Under PrecisionRecall Curve:  {metrics.AreaUnderPrecisionRecallCurve:P2}");
+                Console.WriteLine($"*       F1Score:  {metrics.F1Score:P2}");
+                Console.WriteLine($"*       LogLoss:  {metrics.LogLoss:#.##}");
+                Console.WriteLine($"*       LogLossReduction:  {metrics.LogLossReduction:#.##}");
+                Console.WriteLine($"*       PositivePrecision:  {metrics.PositivePrecision:#.##}");
+                Console.WriteLine($"*       PositiveRecall:  {metrics.PositiveRecall:#.##}");
+                Console.WriteLine($"*       NegativePrecision:  {metrics.NegativePrecision:#.##}");
+                Console.WriteLine($"*       NegativeRecall:  {metrics.NegativeRecall:P2}");
+                Console.WriteLine($"************************************************************");
+                Console.WriteLine("");
+                Console.WriteLine("");
+
+                Console.WriteLine("=============== Saving the model to a file ===============");
+                mlContext.Model.Save(trainedModel, newTrainingDataView.Schema, ModelPath);
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Model Saved ============= ");
+                Console.WriteLine("");
+                Console.WriteLine("");
+            }
+            else if (methodNumber == 5)
+            {
+                var newPipeLine = mlContext.Transforms.Concatenate("Features", remainingColumns).Append(mlContext.BinaryClassification.Trainers.Prior(labelColumnName: "Label"));
+
+                // Evaluate the model using cross-validation
+                // Cross-validation splits our dataset into 'folds', trains a model on some folds and evaluates it on the remaining fold
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Cross-validating to get model's accuracy metrics ===============");
+                var crossValidationResults = mlContext.BinaryClassification.CrossValidate(data: newTrainingDataView, estimator: newPipeLine, numberOfFolds: foldCount);
+                IEnumerable<double> accuracy = crossValidationResults.Select(fold => fold.Metrics.Accuracy);
+                count = 0;
+                crossValidationSum = 0;
+                crossValidationAverage = 0;
+                foreach (var acc in accuracy)
+                {
+                    count++;
+                    crossValidationSum += acc;
+                    Console.WriteLine("Accuracy (k = {0}): {1} = {2} %", count, acc, acc * 100);
+                }
+                crossValidationAverage = crossValidationSum / accuracy.Count();
+                Console.WriteLine("Cross validation average: {0} = {1} %", crossValidationAverage, crossValidationAverage * 100);
+
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Training the model ===============");
+                ITransformer trainedModel = newPipeLine.Fit(newTrainingDataView);
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Finish the train model. Push Enter ===============");
+                Console.WriteLine("");
+                Console.WriteLine("");
+
+                Console.WriteLine("===== Evaluating Model's accuracy with Test data =====");
+                var predictions = trainedModel.Transform(newTestDataView);
+
+                var metrics = mlContext.BinaryClassification.Evaluate(data: predictions, labelColumnName: "Label", scoreColumnName: "Score");
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine($"************************************************************");
+                Console.WriteLine($"*       Metrics for Prior()      ");
+                Console.WriteLine($"*-----------------------------------------------------------");
+                Console.WriteLine($"*       Accuracy: {metrics.Accuracy:P2}");
+                Console.WriteLine($"*       Area Under Roc Curve:      {metrics.AreaUnderRocCurve:P2}");
+                Console.WriteLine($"*       Area Under PrecisionRecall Curve:  {metrics.AreaUnderPrecisionRecallCurve:P2}");
+                Console.WriteLine($"*       F1Score:  {metrics.F1Score:P2}");
+                Console.WriteLine($"*       LogLoss:  {metrics.LogLoss:#.##}");
+                Console.WriteLine($"*       LogLossReduction:  {metrics.LogLossReduction:#.##}");
+                Console.WriteLine($"*       PositivePrecision:  {metrics.PositivePrecision:#.##}");
+                Console.WriteLine($"*       PositiveRecall:  {metrics.PositiveRecall:#.##}");
+                Console.WriteLine($"*       NegativePrecision:  {metrics.NegativePrecision:#.##}");
+                Console.WriteLine($"*       NegativeRecall:  {metrics.NegativeRecall:P2}");
+                Console.WriteLine($"************************************************************");
+                Console.WriteLine("");
+                Console.WriteLine("");
+
+                Console.WriteLine("=============== Saving the model to a file ===============");
+                mlContext.Model.Save(trainedModel, newTrainingDataView.Schema, ModelPath);
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Model Saved ============= ");
+                Console.WriteLine("");
+                Console.WriteLine("");
+            }
+            else if (methodNumber == 6)
+            {
+                var newPipeLine = mlContext.Transforms.Concatenate("Features", remainingColumns).Append(mlContext.BinaryClassification.Trainers.SdcaLogisticRegression(labelColumnName: "Label", featureColumnName: "Features"));
+
+                // Evaluate the model using cross-validation
+                // Cross-validation splits our dataset into 'folds', trains a model on some folds and evaluates it on the remaining fold
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Cross-validating to get model's accuracy metrics ===============");
+                var crossValidationResults = mlContext.BinaryClassification.CrossValidate(data: newTrainingDataView, estimator: newPipeLine, numberOfFolds: foldCount);
+                IEnumerable<double> accuracy = crossValidationResults.Select(fold => fold.Metrics.Accuracy);
+                count = 0;
+                crossValidationSum = 0;
+                crossValidationAverage = 0;
+                foreach (var acc in accuracy)
+                {
+                    count++;
+                    crossValidationSum += acc;
+                    Console.WriteLine("Accuracy (k = {0}): {1} = {2} %", count, acc, acc * 100);
+                }
+                crossValidationAverage = crossValidationSum / accuracy.Count();
+                Console.WriteLine("Cross validation average: {0} = {1} %", crossValidationAverage, crossValidationAverage * 100);
+
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Training the model ===============");
+                ITransformer trainedModel = newPipeLine.Fit(newTrainingDataView);
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Finish the train model. Push Enter ===============");
+                Console.WriteLine("");
+                Console.WriteLine("");
+
+                Console.WriteLine("===== Evaluating Model's accuracy with Test data =====");
+                var predictions = trainedModel.Transform(newTestDataView);
+
+                var metrics = mlContext.BinaryClassification.Evaluate(data: predictions, labelColumnName: "Label", scoreColumnName: "Score");
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine($"************************************************************");
+                Console.WriteLine($"*       Metrics for SdcaLogisticRegression()      ");
+                Console.WriteLine($"*-----------------------------------------------------------");
+                Console.WriteLine($"*       Accuracy: {metrics.Accuracy:P2}");
+                Console.WriteLine($"*       Area Under Roc Curve:      {metrics.AreaUnderRocCurve:P2}");
+                Console.WriteLine($"*       Area Under PrecisionRecall Curve:  {metrics.AreaUnderPrecisionRecallCurve:P2}");
+                Console.WriteLine($"*       F1Score:  {metrics.F1Score:P2}");
+                Console.WriteLine($"*       LogLoss:  {metrics.LogLoss:#.##}");
+                Console.WriteLine($"*       LogLossReduction:  {metrics.LogLossReduction:#.##}");
+                Console.WriteLine($"*       PositivePrecision:  {metrics.PositivePrecision:#.##}");
+                Console.WriteLine($"*       PositiveRecall:  {metrics.PositiveRecall:#.##}");
+                Console.WriteLine($"*       NegativePrecision:  {metrics.NegativePrecision:#.##}");
+                Console.WriteLine($"*       NegativeRecall:  {metrics.NegativeRecall:P2}");
+                Console.WriteLine($"************************************************************");
+                Console.WriteLine("");
+                Console.WriteLine("");
+
+                Console.WriteLine("=============== Saving the model to a file ===============");
+                mlContext.Model.Save(trainedModel, newTrainingDataView.Schema, ModelPath);
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Model Saved ============= ");
+                Console.WriteLine("");
+                Console.WriteLine("");
+            }
+            else if (methodNumber == 7)
+            {
+                var newPipeLine = mlContext.Transforms.Concatenate("Features", remainingColumns).Append(mlContext.BinaryClassification.Trainers.SdcaNonCalibrated(labelColumnName: "Label", featureColumnName: "Features"));
+
+                // Evaluate the model using cross-validation
+                // Cross-validation splits our dataset into 'folds', trains a model on some folds and evaluates it on the remaining fold
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Cross-validating to get model's accuracy metrics ===============");
+                var crossValidationResults = mlContext.BinaryClassification.CrossValidate(data: newTrainingDataView, estimator: newPipeLine, numberOfFolds: foldCount);
+                IEnumerable<double> accuracy = crossValidationResults.Select(fold => fold.Metrics.Accuracy);
+                count = 0;
+                crossValidationSum = 0;
+                crossValidationAverage = 0;
+                foreach (var acc in accuracy)
+                {
+                    count++;
+                    crossValidationSum += acc;
+                    Console.WriteLine("Accuracy (k = {0}): {1} = {2} %", count, acc, acc * 100);
+                }
+                crossValidationAverage = crossValidationSum / accuracy.Count();
+                Console.WriteLine("Cross validation average: {0} = {1} %", crossValidationAverage, crossValidationAverage * 100);
+
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Training the model ===============");
+                ITransformer trainedModel = newPipeLine.Fit(newTrainingDataView);
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Finish the train model. Push Enter ===============");
+                Console.WriteLine("");
+                Console.WriteLine("");
+
+                Console.WriteLine("===== Evaluating Model's accuracy with Test data =====");
+                var predictions = trainedModel.Transform(newTestDataView);
+
+                var metrics = mlContext.BinaryClassification.Evaluate(data: predictions, labelColumnName: "Label", scoreColumnName: "Score");
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine($"************************************************************");
+                Console.WriteLine($"*       Metrics for SdcaNonCalibrated()      ");
+                Console.WriteLine($"*-----------------------------------------------------------");
+                Console.WriteLine($"*       Accuracy: {metrics.Accuracy:P2}");
+                Console.WriteLine($"*       Area Under Roc Curve:      {metrics.AreaUnderRocCurve:P2}");
+                Console.WriteLine($"*       Area Under PrecisionRecall Curve:  {metrics.AreaUnderPrecisionRecallCurve:P2}");
+                Console.WriteLine($"*       F1Score:  {metrics.F1Score:P2}");
+                Console.WriteLine($"*       LogLoss:  {metrics.LogLoss:#.##}");
+                Console.WriteLine($"*       LogLossReduction:  {metrics.LogLossReduction:#.##}");
+                Console.WriteLine($"*       PositivePrecision:  {metrics.PositivePrecision:#.##}");
+                Console.WriteLine($"*       PositiveRecall:  {metrics.PositiveRecall:#.##}");
+                Console.WriteLine($"*       NegativePrecision:  {metrics.NegativePrecision:#.##}");
+                Console.WriteLine($"*       NegativeRecall:  {metrics.NegativeRecall:P2}");
+                Console.WriteLine($"************************************************************");
+                Console.WriteLine("");
+                Console.WriteLine("");
+
+                Console.WriteLine("=============== Saving the model to a file ===============");
+                mlContext.Model.Save(trainedModel, newTrainingDataView.Schema, ModelPath);
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Model Saved ============= ");
+                Console.WriteLine("");
+                Console.WriteLine("");
+            }
+            else if (methodNumber == 8)
+            {
+                var newPipeLine = mlContext.Transforms.Concatenate("Features", remainingColumns).Append(mlContext.BinaryClassification.Trainers.SgdCalibrated(labelColumnName: "Label", featureColumnName: "Features"));
+
+                // Evaluate the model using cross-validation
+                // Cross-validation splits our dataset into 'folds', trains a model on some folds and evaluates it on the remaining fold
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Cross-validating to get model's accuracy metrics ===============");
+                var crossValidationResults = mlContext.BinaryClassification.CrossValidate(data: newTrainingDataView, estimator: newPipeLine, numberOfFolds: foldCount);
+                IEnumerable<double> accuracy = crossValidationResults.Select(fold => fold.Metrics.Accuracy);
+                count = 0;
+                crossValidationSum = 0;
+                crossValidationAverage = 0;
+                foreach (var acc in accuracy)
+                {
+                    count++;
+                    crossValidationSum += acc;
+                    Console.WriteLine("Accuracy (k = {0}): {1} = {2} %", count, acc, acc * 100);
+                }
+                crossValidationAverage = crossValidationSum / accuracy.Count();
+                Console.WriteLine("Cross validation average: {0} = {1} %", crossValidationAverage, crossValidationAverage * 100);
+
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Training the model ===============");
+                ITransformer trainedModel = newPipeLine.Fit(newTrainingDataView);
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Finish the train model. Push Enter ===============");
+                Console.WriteLine("");
+                Console.WriteLine("");
+
+                Console.WriteLine("===== Evaluating Model's accuracy with Test data =====");
+                var predictions = trainedModel.Transform(newTestDataView);
+
+                var metrics = mlContext.BinaryClassification.Evaluate(data: predictions, labelColumnName: "Label", scoreColumnName: "Score");
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine($"************************************************************");
+                Console.WriteLine($"*       Metrics for SgdCalibrated()      ");
+                Console.WriteLine($"*-----------------------------------------------------------");
+                Console.WriteLine($"*       Accuracy: {metrics.Accuracy:P2}");
+                Console.WriteLine($"*       Area Under Roc Curve:      {metrics.AreaUnderRocCurve:P2}");
+                Console.WriteLine($"*       Area Under PrecisionRecall Curve:  {metrics.AreaUnderPrecisionRecallCurve:P2}");
+                Console.WriteLine($"*       F1Score:  {metrics.F1Score:P2}");
+                Console.WriteLine($"*       LogLoss:  {metrics.LogLoss:#.##}");
+                Console.WriteLine($"*       LogLossReduction:  {metrics.LogLossReduction:#.##}");
+                Console.WriteLine($"*       PositivePrecision:  {metrics.PositivePrecision:#.##}");
+                Console.WriteLine($"*       PositiveRecall:  {metrics.PositiveRecall:#.##}");
+                Console.WriteLine($"*       NegativePrecision:  {metrics.NegativePrecision:#.##}");
+                Console.WriteLine($"*       NegativeRecall:  {metrics.NegativeRecall:P2}");
+                Console.WriteLine($"************************************************************");
+                Console.WriteLine("");
+                Console.WriteLine("");
+
+                Console.WriteLine("=============== Saving the model to a file ===============");
+                mlContext.Model.Save(trainedModel, newTrainingDataView.Schema, ModelPath);
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Model Saved ============= ");
+                Console.WriteLine("");
+                Console.WriteLine("");
+            }
+            else if (methodNumber == 9)
+            {
+                var newPipeLine = mlContext.Transforms.Concatenate("Features", remainingColumns).Append(mlContext.BinaryClassification.Trainers.SgdNonCalibrated(labelColumnName: "Label", featureColumnName: "Features"));
+
+                // Evaluate the model using cross-validation
+                // Cross-validation splits our dataset into 'folds', trains a model on some folds and evaluates it on the remaining fold
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Cross-validating to get model's accuracy metrics ===============");
+                var crossValidationResults = mlContext.BinaryClassification.CrossValidate(data: newTrainingDataView, estimator: newPipeLine, numberOfFolds: foldCount);
+                IEnumerable<double> accuracy = crossValidationResults.Select(fold => fold.Metrics.Accuracy);
+                count = 0;
+                crossValidationSum = 0;
+                crossValidationAverage = 0;
+                foreach (var acc in accuracy)
+                {
+                    count++;
+                    crossValidationSum += acc;
+                    Console.WriteLine("Accuracy (k = {0}): {1} = {2} %", count, acc, acc * 100);
+                }
+                crossValidationAverage = crossValidationSum / accuracy.Count();
+                Console.WriteLine("Cross validation average: {0} = {1} %", crossValidationAverage, crossValidationAverage * 100);
+
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Training the model ===============");
+                ITransformer trainedModel = newPipeLine.Fit(newTrainingDataView);
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Finish the train model. Push Enter ===============");
+                Console.WriteLine("");
+                Console.WriteLine("");
+
+                Console.WriteLine("===== Evaluating Model's accuracy with Test data =====");
+                var predictions = trainedModel.Transform(newTestDataView);
+
+                var metrics = mlContext.BinaryClassification.Evaluate(data: predictions, labelColumnName: "Label", scoreColumnName: "Score");
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine($"************************************************************");
+                Console.WriteLine($"*       Metrics for SgdNonCalibrated()      ");
+                Console.WriteLine($"*-----------------------------------------------------------");
+                Console.WriteLine($"*       Accuracy: {metrics.Accuracy:P2}");
+                Console.WriteLine($"*       Area Under Roc Curve:      {metrics.AreaUnderRocCurve:P2}");
+                Console.WriteLine($"*       Area Under PrecisionRecall Curve:  {metrics.AreaUnderPrecisionRecallCurve:P2}");
+                Console.WriteLine($"*       F1Score:  {metrics.F1Score:P2}");
+                Console.WriteLine($"*       LogLoss:  {metrics.LogLoss:#.##}");
+                Console.WriteLine($"*       LogLossReduction:  {metrics.LogLossReduction:#.##}");
+                Console.WriteLine($"*       PositivePrecision:  {metrics.PositivePrecision:#.##}");
+                Console.WriteLine($"*       PositiveRecall:  {metrics.PositiveRecall:#.##}");
+                Console.WriteLine($"*       NegativePrecision:  {metrics.NegativePrecision:#.##}");
+                Console.WriteLine($"*       NegativeRecall:  {metrics.NegativeRecall:P2}");
+                Console.WriteLine($"************************************************************");
+                Console.WriteLine("");
+                Console.WriteLine("");
+
+                Console.WriteLine("=============== Saving the model to a file ===============");
+                mlContext.Model.Save(trainedModel, newTrainingDataView.Schema, ModelPath);
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Model Saved ============= ");
+                Console.WriteLine("");
+                Console.WriteLine("");
+            }
+            else if (methodNumber == 10)
+            {
+                var newPipeLine = mlContext.Transforms.Concatenate("Features", remainingColumns).Append(mlContext.BinaryClassification.Trainers.FastForest(labelColumnName: "Label", featureColumnName: "Features"));
+
+                // Evaluate the model using cross-validation
+                // Cross-validation splits our dataset into 'folds', trains a model on some folds and evaluates it on the remaining fold
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Cross-validating to get model's accuracy metrics ===============");
+                var crossValidationResults = mlContext.BinaryClassification.CrossValidate(data: newTrainingDataView, estimator: newPipeLine, numberOfFolds: foldCount);
+                IEnumerable<double> accuracy = crossValidationResults.Select(fold => fold.Metrics.Accuracy);
+                count = 0;
+                crossValidationSum = 0;
+                crossValidationAverage = 0;
+                foreach (var acc in accuracy)
+                {
+                    count++;
+                    crossValidationSum += acc;
+                    Console.WriteLine("Accuracy (k = {0}): {1} = {2} %", count, acc, acc * 100);
+                }
+                crossValidationAverage = crossValidationSum / accuracy.Count();
+                Console.WriteLine("Cross validation average: {0} = {1} %", crossValidationAverage, crossValidationAverage * 100);
+
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Training the model ===============");
+                ITransformer trainedModel = newPipeLine.Fit(newTrainingDataView);
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Finish the train model. Push Enter ===============");
+                Console.WriteLine("");
+                Console.WriteLine("");
+
+                Console.WriteLine("===== Evaluating Model's accuracy with Test data =====");
+                var predictions = trainedModel.Transform(newTestDataView);
+
+                var metrics = mlContext.BinaryClassification.Evaluate(data: predictions, labelColumnName: "Label", scoreColumnName: "Score");
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine($"************************************************************");
+                Console.WriteLine($"*       Metrics for FastForest()      ");
+                Console.WriteLine($"*-----------------------------------------------------------");
+                Console.WriteLine($"*       Accuracy: {metrics.Accuracy:P2}");
+                Console.WriteLine($"*       Area Under Roc Curve:      {metrics.AreaUnderRocCurve:P2}");
+                Console.WriteLine($"*       Area Under PrecisionRecall Curve:  {metrics.AreaUnderPrecisionRecallCurve:P2}");
+                Console.WriteLine($"*       F1Score:  {metrics.F1Score:P2}");
+                Console.WriteLine($"*       LogLoss:  {metrics.LogLoss:#.##}");
+                Console.WriteLine($"*       LogLossReduction:  {metrics.LogLossReduction:#.##}");
+                Console.WriteLine($"*       PositivePrecision:  {metrics.PositivePrecision:#.##}");
+                Console.WriteLine($"*       PositiveRecall:  {metrics.PositiveRecall:#.##}");
+                Console.WriteLine($"*       NegativePrecision:  {metrics.NegativePrecision:#.##}");
+                Console.WriteLine($"*       NegativeRecall:  {metrics.NegativeRecall:P2}");
+                Console.WriteLine($"************************************************************");
+                Console.WriteLine("");
+                Console.WriteLine("");
+
+                Console.WriteLine("=============== Saving the model to a file ===============");
+                mlContext.Model.Save(trainedModel, newTrainingDataView.Schema, ModelPath);
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Model Saved ============= ");
+                Console.WriteLine("");
+                Console.WriteLine("");
+            }
+            else if (methodNumber == 11)
+            {
+                var newPipeLine = mlContext.Transforms.Concatenate("Features", remainingColumns).Append(mlContext.BinaryClassification.Trainers.FastTree(labelColumnName: "Label", featureColumnName: "Features"));
+
+                // Evaluate the model using cross-validation
+                // Cross-validation splits our dataset into 'folds', trains a model on some folds and evaluates it on the remaining fold
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Cross-validating to get model's accuracy metrics ===============");
+                var crossValidationResults = mlContext.BinaryClassification.CrossValidate(data: newTrainingDataView, estimator: newPipeLine, numberOfFolds: foldCount);
+                IEnumerable<double> accuracy = crossValidationResults.Select(fold => fold.Metrics.Accuracy);
+                count = 0;
+                crossValidationSum = 0;
+                crossValidationAverage = 0;
+                foreach (var acc in accuracy)
+                {
+                    count++;
+                    crossValidationSum += acc;
+                    Console.WriteLine("Accuracy (k = {0}): {1} = {2} %", count, acc, acc * 100);
+                }
+                crossValidationAverage = crossValidationSum / accuracy.Count();
+                Console.WriteLine("Cross validation average: {0} = {1} %", crossValidationAverage, crossValidationAverage * 100);
+
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Training the model ===============");
+                ITransformer trainedModel = newPipeLine.Fit(newTrainingDataView);
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Finish the train model. Push Enter ===============");
+                Console.WriteLine("");
+                Console.WriteLine("");
+
+                Console.WriteLine("===== Evaluating Model's accuracy with Test data =====");
+                var predictions = trainedModel.Transform(newTestDataView);
+
+                var metrics = mlContext.BinaryClassification.Evaluate(data: predictions, labelColumnName: "Label", scoreColumnName: "Score");
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine($"************************************************************");
+                Console.WriteLine($"*       Metrics for FastTree()      ");
+                Console.WriteLine($"*-----------------------------------------------------------");
+                Console.WriteLine($"*       Accuracy: {metrics.Accuracy:P2}");
+                Console.WriteLine($"*       Area Under Roc Curve:      {metrics.AreaUnderRocCurve:P2}");
+                Console.WriteLine($"*       Area Under PrecisionRecall Curve:  {metrics.AreaUnderPrecisionRecallCurve:P2}");
+                Console.WriteLine($"*       F1Score:  {metrics.F1Score:P2}");
+                Console.WriteLine($"*       LogLoss:  {metrics.LogLoss:#.##}");
+                Console.WriteLine($"*       LogLossReduction:  {metrics.LogLossReduction:#.##}");
+                Console.WriteLine($"*       PositivePrecision:  {metrics.PositivePrecision:#.##}");
+                Console.WriteLine($"*       PositiveRecall:  {metrics.PositiveRecall:#.##}");
+                Console.WriteLine($"*       NegativePrecision:  {metrics.NegativePrecision:#.##}");
+                Console.WriteLine($"*       NegativeRecall:  {metrics.NegativeRecall:P2}");
+                Console.WriteLine($"************************************************************");
+                Console.WriteLine("");
+                Console.WriteLine("");
+
+                Console.WriteLine("=============== Saving the model to a file ===============");
+                mlContext.Model.Save(trainedModel, newTrainingDataView.Schema, ModelPath);
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Model Saved ============= ");
+                Console.WriteLine("");
+                Console.WriteLine("");
+            }
+            else if (methodNumber == 12)
+            {
+                var newPipeLine = mlContext.Transforms.Concatenate("Features", remainingColumns).Append(mlContext.BinaryClassification.Trainers.Gam(labelColumnName: "Label", featureColumnName: "Features"));
+
+                // Evaluate the model using cross-validation
+                // Cross-validation splits our dataset into 'folds', trains a model on some folds and evaluates it on the remaining fold
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Cross-validating to get model's accuracy metrics ===============");
+                var crossValidationResults = mlContext.BinaryClassification.CrossValidate(data: newTrainingDataView, estimator: newPipeLine, numberOfFolds: foldCount);
+                IEnumerable<double> accuracy = crossValidationResults.Select(fold => fold.Metrics.Accuracy);
+                count = 0;
+                crossValidationSum = 0;
+                crossValidationAverage = 0;
+                foreach (var acc in accuracy)
+                {
+                    count++;
+                    crossValidationSum += acc;
+                    Console.WriteLine("Accuracy (k = {0}): {1} = {2} %", count, acc, acc * 100);
+                }
+                crossValidationAverage = crossValidationSum / accuracy.Count();
+                Console.WriteLine("Cross validation average: {0} = {1} %", crossValidationAverage, crossValidationAverage * 100);
+
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Training the model ===============");
+                ITransformer trainedModel = newPipeLine.Fit(newTrainingDataView);
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Finish the train model. Push Enter ===============");
+                Console.WriteLine("");
+                Console.WriteLine("");
+
+                Console.WriteLine("===== Evaluating Model's accuracy with Test data =====");
+                var predictions = trainedModel.Transform(newTestDataView);
+
+                var metrics = mlContext.BinaryClassification.Evaluate(data: predictions, labelColumnName: "Label", scoreColumnName: "Score");
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine($"************************************************************");
+                Console.WriteLine($"*       Metrics for Gam()      ");
+                Console.WriteLine($"*-----------------------------------------------------------");
+                Console.WriteLine($"*       Accuracy: {metrics.Accuracy:P2}");
+                Console.WriteLine($"*       Area Under Roc Curve:      {metrics.AreaUnderRocCurve:P2}");
+                Console.WriteLine($"*       Area Under PrecisionRecall Curve:  {metrics.AreaUnderPrecisionRecallCurve:P2}");
+                Console.WriteLine($"*       F1Score:  {metrics.F1Score:P2}");
+                Console.WriteLine($"*       LogLoss:  {metrics.LogLoss:#.##}");
+                Console.WriteLine($"*       LogLossReduction:  {metrics.LogLossReduction:#.##}");
+                Console.WriteLine($"*       PositivePrecision:  {metrics.PositivePrecision:#.##}");
+                Console.WriteLine($"*       PositiveRecall:  {metrics.PositiveRecall:#.##}");
+                Console.WriteLine($"*       NegativePrecision:  {metrics.NegativePrecision:#.##}");
+                Console.WriteLine($"*       NegativeRecall:  {metrics.NegativeRecall:P2}");
+                Console.WriteLine($"************************************************************");
+                Console.WriteLine("");
+                Console.WriteLine("");
+
+                Console.WriteLine("=============== Saving the model to a file ===============");
+                mlContext.Model.Save(trainedModel, newTrainingDataView.Schema, ModelPath);
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Model Saved ============= ");
+                Console.WriteLine("");
+                Console.WriteLine("");
+            }
+            else
+            {
+                var newPipeLine = mlContext.Transforms.Concatenate("Features", remainingColumns).Append(mlContext.Clustering.Trainers.KMeans(featureColumnName: "Features", numberOfClusters: clusterCount));
+
+                // !!! Kryžminė patikra su KMeans kažkodėl neveikia
+
+                // Evaluate the model using cross-validation
+                // Cross-validation splits our dataset into 'folds', trains a model on some folds and evaluates it on the remaining fold
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Cross-validating to get model's accuracy metrics ===============");
+                var crossValidationResults = mlContext.Clustering.CrossValidate(data: newTrainingDataView, estimator: newPipeLine, numberOfFolds: foldCount);
+                IEnumerable<double> accuracy = crossValidationResults.Select(fold => fold.Metrics.AverageDistance);
+                count = 0;
+                crossValidationSum = 0;
+                crossValidationAverage = 0;
+                foreach (var acc in accuracy)
+                {
+                    count++;
+                    crossValidationSum += acc;
+                    Console.WriteLine("Accuracy (k = {0}): {1} = {2} %", count, acc, acc * 100);
+                }
+                crossValidationAverage = crossValidationSum / accuracy.Count();
+                Console.WriteLine("Cross validation average: {0} = {1} %", crossValidationAverage, crossValidationAverage * 100);
+
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Training the model ===============");
+                ITransformer trainedModel = newPipeLine.Fit(newTrainingDataView);
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Finish the train model. Push Enter ===============");
+                Console.WriteLine("");
+                Console.WriteLine("");
+
+                Console.WriteLine("===== Evaluating Model's accuracy with Test data =====");
+                var predictions = trainedModel.Transform(newTestDataView);
+
+                var metrics = mlContext.Clustering.Evaluate(predictions, scoreColumnName: "Score", featureColumnName: "Features");
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine($"************************************************************");
+                Console.WriteLine($"*       Metrics for KMeans()      ");
+                Console.WriteLine($"*-----------------------------------------------------------");
+                Console.WriteLine($"*       AverageDistance: {metrics.AverageDistance}");
+                Console.WriteLine($"*       DaviesBouldinIndex:      {metrics.DaviesBouldinIndex}");
+                Console.WriteLine($"*       NormalizedMutualInformation:  {metrics.NormalizedMutualInformation}");
+                Console.WriteLine($"************************************************************");
+                Console.WriteLine("");
+                Console.WriteLine("");
+
+                Console.WriteLine("=============== Saving the model to a file ===============");
+                mlContext.Model.Save(trainedModel, newTrainingDataView.Schema, ModelPath);
+                Console.WriteLine("");
+                Console.WriteLine("");
+                Console.WriteLine("=============== Model Saved ============= ");
+                Console.WriteLine("");
+                Console.WriteLine("");
+            }
         }
 
         private static void BuildTrainEvaluateAndSaveModel(MLContext mlContext)
@@ -366,6 +1179,7 @@ namespace HeartDiseasePredictionConsoleApp
             Console.WriteLine("");
             Console.WriteLine("=============== Model Saved ============= ");
         }
+
         private static void BuildTrainEvaluateAndSaveModelGam(MLContext mlContext)
         {
             // STEP 1: Common data loading configuration
@@ -413,6 +1227,7 @@ namespace HeartDiseasePredictionConsoleApp
             Console.WriteLine("");
             Console.WriteLine("=============== Model Saved ============= ");
         }
+
         private static void BuildTrainEvaluateAndSaveModelLbfgs(MLContext mlContext)
         {
             // STEP 1: Common data loading configuration
@@ -461,7 +1276,6 @@ namespace HeartDiseasePredictionConsoleApp
             Console.WriteLine("=============== Model Saved ============= ");
         }
 
-
         private static void TestPrediction(MLContext mlContext)
         {
             ITransformer trainedModel = mlContext.Model.Load(ModelPath, out var modelInputSchema);
@@ -496,6 +1310,7 @@ namespace HeartDiseasePredictionConsoleApp
             }
 
         }
+
         public static string GetAbsolutePath(string relativePath)
         {
             FileInfo _dataRoot = new FileInfo(typeof(Program).Assembly.Location);
