@@ -16,13 +16,39 @@ namespace HeartDiseasePredictionConsoleApp
 
     public class InputData
     {
-        [VectorType(14)]
+        [VectorType(13)]
         public float[] NumericVector { get; set; }
-    };
+    }
 
     public class Program
     {
+        // Reikšmės ilgis spausdinant
+        private static int valueLength = 4;
+
+        // Spausdinamų duomenų (eilučių) kiekis
+        private static int dataPrintCount = 10;
+
+        // Slenkstis, naudojamas dimensijų sumažinimui, t.y. nurodo, kad stulpelyje turi būti bent nurodytas kiekis (>= slenkstis) non-default elementų
+        // Jei stulpelyje non-default elementų skaičius yra mažesnis už slenkstį, stulpelis (atributas) bus atmetamas
+        // Pavyzdys: slenkstis = 3; NaN yra default reikšmė
+        // PRIEŠ dimensijų sumažinimą
+        // 4, NaN,   6
+        // 4,   5,   6
+        // 4,   5,   6
+        // 4, NaN, NaN
+        // PO dimensijų sumažinimo: antras stulpelis (atributas) atmetamas, nes jame yra mažiau nei 3 (< slenkstis) non-default (ne NaN) reikšmės
+        // 4,        6
+        // 4,        6
+        // 4,        6
+        // 4,        NaN
+        private static int threshold = 282;
+
+        // Kryžminės patikros fold count
+        private static int foldCount = 5;
+
+        // !!! Nebereikalingas
         const int crossValidatioN = 10;
+
         private static string BaseDatasetsRelativePath = @"../../../../Data";
         private static string TrainDataRelativePath = $"{BaseDatasetsRelativePath}/HeartTraining.csv";
         private static string TestDataRelativePath = $"{BaseDatasetsRelativePath}/HeartTest.csv";
@@ -44,7 +70,10 @@ namespace HeartDiseasePredictionConsoleApp
             if (naudojaNaujaMetoda)
             {
                 BuildTrainEvaluateAndSaveModelNEZINAU(mlContext);
-              //  crossValidation();
+                TestPrediction(mlContext);
+
+                // !!! Nebereikalingas
+                // crossValidation();
             }
             else
             {
@@ -59,15 +88,19 @@ namespace HeartDiseasePredictionConsoleApp
         /// <summary>
         /// Returns a few rows of data.
         /// </summary>
-        private static IEnumerable<InputData> GetTrainData()
+        /// <param name="filePath"></param>
+        /// <returns></returns>
+        private static IEnumerable<InputData> GetData(string filePath)
         {
-            var trainData = new List<InputData>();
-            string[] trainDataLines = File.ReadAllLines(TrainDataPath);
-            for (int i = 0; i < trainDataLines.Length; i++)
+            var data = new List<InputData>();
+            string[] dataLines = File.ReadAllLines(filePath);
+            for (int i = 0; i < dataLines.Length; i++)
             {
-                string[] values = trainDataLines[i].Split(';', StringSplitOptions.RemoveEmptyEntries);
-                float[] numericVector = new float[values.Length];
-                for (int j = 0; j < values.Length; j++)
+                string[] values = dataLines[i].Split(';', StringSplitOptions.RemoveEmptyEntries);
+
+                // Imam [values.Length - 1], nes nereikia paskutinio atributo (the predicted attribute)
+                float[] numericVector = new float[values.Length - 1];
+                for (int j = 0; j < values.Length - 1; j++)
                 {
                     numericVector[j] = float.Parse(values[j], CultureInfo.InvariantCulture.NumberFormat);
                 }
@@ -75,36 +108,13 @@ namespace HeartDiseasePredictionConsoleApp
                 {
                     NumericVector = numericVector
                 };
-                trainData.Add(inputdata);
+                data.Add(inputdata);
             }
-            return trainData;
+            return data;
         }
 
         /// <summary>
-        /// Returns a few rows of data.
-        /// </summary>
-        private static IEnumerable<InputData> GetTestData()
-        {
-            var testData = new List<InputData>();
-            string[] testDataLines = File.ReadAllLines(TestDataPath);
-            for (int i = 0; i < testDataLines.Length; i++)
-            {
-                string[] values = testDataLines[i].Split(';', StringSplitOptions.RemoveEmptyEntries);
-                float[] numericVector = new float[values.Length];
-                for (int j = 0; j < values.Length; j++)
-                {
-                    numericVector[j] = float.Parse(values[j], CultureInfo.InvariantCulture.NumberFormat);
-                }
-                InputData inputdata = new InputData
-                {
-                    NumericVector = numericVector
-                };
-                testData.Add(inputdata);
-            }
-            return testData;
-        }
-        /// <summary>
-        /// Returns a few rows of data.
+        /// !!! Nebereikalingas
         /// </summary>
         private static IEnumerable<InputData> GetTestDatacross(int count)
         {
@@ -128,26 +138,79 @@ namespace HeartDiseasePredictionConsoleApp
             return testData;
         }
 
+        /// <summary>
+        /// Gauna likusius stulpelių (atributų) vardus, kurių neatmetė dimensijų sumažinimas.
+        /// </summary>
+        /// <param name="convertedData"></param>
+        /// <param name="filePath"></param>
+        /// <returns></returns>
+        private static string[] GetRemainingColumns(IEnumerable<TransformedData> convertedData, string filePath)
+        {
+            IDictionary<string, List<float>> allColumns = new Dictionary<string, List<float>>
+            {
+                { "Age", new List<float>() },
+                { "Sex", new List<float>() },
+                { "Cp", new List<float>() },
+                { "TrestBps", new List<float>() },
+                { "Chol", new List<float>() },
+                { "Fbs", new List<float>() },
+                { "RestEcg", new List<float>() },
+                { "Thalac", new List<float>() },
+                { "Exang", new List<float>() },
+                { "OldPeak", new List<float>() },
+                { "Slope", new List<float>() },
+                { "Ca", new List<float>() },
+                { "Thal", new List<float>() }
+            };
+            IDictionary<int, List<float>> remainingColumns = new Dictionary<int, List<float>>();
+            for (int i = 0; i < convertedData.ElementAt(0).NumericVector.Length; i++)
+            {
+                remainingColumns.Add(i, new List<float>());
+            }
+            foreach (var item in convertedData)
+            {
+                for (int i = 0; i < item.NumericVector.Length; i++)
+                {
+                    remainingColumns[remainingColumns.Keys.ElementAt(i)].Add(item.NumericVector[i]);
+                }
+            }
+            string[] dataLines = File.ReadAllLines(filePath);
+            for (int i = 0; i < dataLines.Length; i++)
+            {
+                string[] values = dataLines[i].Split(';', StringSplitOptions.RemoveEmptyEntries);
+
+                // Imam [values.Length - 1], nes nereikia paskutinio atributo (the predicted attribute)
+                for (int j = 0; j < values.Length - 1; j++)
+                {
+                    allColumns[allColumns.Keys.ElementAt(j)].Add(float.Parse(values[j], CultureInfo.InvariantCulture.NumberFormat));
+                }
+            }
+            string[] remainingColumnNames = new string[remainingColumns.Count];
+            for (int i = 0; i < remainingColumns.Count; i++)
+            {
+                for (int j = 0; j < allColumns.Count; j++)
+                {
+                    if (remainingColumns[remainingColumns.Keys.ElementAt(i)].SequenceEqual(allColumns[allColumns.Keys.ElementAt(j)]))
+                    {
+                        remainingColumnNames[i] = allColumns.Keys.ElementAt(j);
+                        break;
+                    }
+                }
+            }
+            return remainingColumnNames;
+        }
+
         /*
-         * !!! Nežinau, ar gerai pritaikiau dimensijų sumažinimą, tai kol kas sukūriau atskirą metodą :D
-         * !!! Trūksta mašininio mokymosi metodo
+         * !!! Nežinau, ar gerai pritaikiau dimensijų sumažinimą ir kryžminę patikrą, tai kol kas sukūriau atskirą metodą :D
+         * !!! Reikia dar nuspręst dėl mašininio mokymosi metodų
          */
         private static void BuildTrainEvaluateAndSaveModelNEZINAU(MLContext mlContext)
         {
-            // Reikšmės ilgis spausdinant
-            int valueLength = 4;
-
-            // Spausdinamų duomenų (eilučių) kiekis
-            int dataPrintCount = 10;
-
-            // Slenkstis
-            int threshold = 100;
-
             // Get a small dataset as an IEnumerable and convert it to an IDataView.
-            var rawTrainData = GetTrainData();
-            var rawTestData = GetTestData();
+            var rawTrainData = GetData(TrainDataPath);
+            var rawTestData = GetData(TestDataPath);
 
-            // STEP 1: Common data loading configuration
+            // Common data loading configuration
             var trainingDataView = mlContext.Data.LoadFromEnumerable(rawTrainData);
             var testDataView = mlContext.Data.LoadFromEnumerable(rawTestData);
 
@@ -168,27 +231,15 @@ namespace HeartDiseasePredictionConsoleApp
                 }
             }
 
-            // STEP 2: We will use the SelectFeaturesBasedOnCount transform estimator, to retain only those slots which have at least 'count' non-default values per slot
-            // FeatureSelection(): dimensijų sumažinimas (nežinau, ar gerai padariau)
+            // We will use the SelectFeaturesBasedOnCount transform estimator, to retain only those slots which have at least 'count' non-default values per slot
             var pipeline = mlContext.Transforms.FeatureSelection.SelectFeaturesBasedOnCount(new InputOutputColumnPair[] { new InputOutputColumnPair("NumericVector") }, count: threshold);
 
-            Console.WriteLine("");
-            Console.WriteLine("");
-            Console.WriteLine("=============== Training the model ===============");
-            ITransformer trainedModel = pipeline.Fit(trainingDataView);
-            Console.WriteLine("");
-            Console.WriteLine("");
-            Console.WriteLine("=============== Finish the train model. Push Enter ===============");
-            Console.WriteLine("");
-            Console.WriteLine("");
+            var transformedData = pipeline.Fit(trainingDataView).Transform(trainingDataView);
 
-            Console.WriteLine("===== Evaluating Model's accuracy with Test data =====");
-            Console.WriteLine("");
-            var predictions = trainedModel.Transform(testDataView);
-
-            var convertedData = mlContext.Data.CreateEnumerable<TransformedData>(predictions, true);
+            var convertedData = mlContext.Data.CreateEnumerable<TransformedData>(transformedData, true);
 
             // Spausdina duomenis PO dimensijų sumažinimo
+            Console.WriteLine("");
             Console.WriteLine("");
             Console.WriteLine("=============== Input data AFTER FeatureSelection(threshold: {0}) ===============", threshold);
             count = 0;
@@ -206,8 +257,41 @@ namespace HeartDiseasePredictionConsoleApp
                 }
             }
 
-            // !!! metrics neveikia, dar nežinau kaip sutvarkyt
-            /*
+            // Gauna likusius stulpelių (atributų) vardus, kurių neatmetė dimensijų sumažinimas
+            string[] remainingColumns = GetRemainingColumns(convertedData, TrainDataPath);
+
+            // Nauji duomenys po dimensijų sumažinimo
+            var newTrainingDataView = mlContext.Data.LoadFromTextFile<HeartData>(TrainDataPath, hasHeader: true, separatorChar: ';');
+            var newTestDataView = mlContext.Data.LoadFromTextFile<HeartData>(TestDataPath, hasHeader: true, separatorChar: ';');
+            var newPipeLine = mlContext.Transforms.Concatenate("Features", remainingColumns).Append(mlContext.BinaryClassification.Trainers.FastTree(labelColumnName: "Label", featureColumnName: "Features"));
+
+            // Evaluate the model using cross-validation
+            // Cross-validation splits our dataset into 'folds', trains a model on some folds and evaluates it on the remaining fold
+            Console.WriteLine("");
+            Console.WriteLine("");
+            Console.WriteLine("=============== Cross-validating to get model's accuracy metrics ===============");
+            var crossValidationResults = mlContext.BinaryClassification.CrossValidate(data: newTrainingDataView, estimator: newPipeLine, numberOfFolds: foldCount);
+            IEnumerable<double> accuracy = crossValidationResults.Select(fold => fold.Metrics.Accuracy);
+            count = 0;
+            foreach (var acc in accuracy)
+            {
+                count++;
+                Console.WriteLine("Accuracy (k = {0}): {1} = {2} %", count, acc, acc * 100);
+            }
+
+            Console.WriteLine("");
+            Console.WriteLine("");
+            Console.WriteLine("=============== Training the model ===============");
+            ITransformer trainedModel = newPipeLine.Fit(newTrainingDataView);
+            Console.WriteLine("");
+            Console.WriteLine("");
+            Console.WriteLine("=============== Finish the train model. Push Enter ===============");
+            Console.WriteLine("");
+            Console.WriteLine("");
+
+            Console.WriteLine("===== Evaluating Model's accuracy with Test data =====");
+            var predictions = trainedModel.Transform(newTestDataView);
+
             var metrics = mlContext.BinaryClassification.Evaluate(data: predictions, labelColumnName: "Label", scoreColumnName: "Score");
             Console.WriteLine("");
             Console.WriteLine("");
@@ -225,15 +309,16 @@ namespace HeartDiseasePredictionConsoleApp
             Console.WriteLine($"*       NegativePrecision:  {metrics.NegativePrecision:#.##}");
             Console.WriteLine($"*       NegativeRecall:  {metrics.NegativeRecall:P2}");
             Console.WriteLine($"************************************************************");
-            */
             Console.WriteLine("");
             Console.WriteLine("");
 
             Console.WriteLine("=============== Saving the model to a file ===============");
-            mlContext.Model.Save(trainedModel, trainingDataView.Schema, ModelPath);
+            mlContext.Model.Save(trainedModel, newTrainingDataView.Schema, ModelPath);
             Console.WriteLine("");
             Console.WriteLine("");
             Console.WriteLine("=============== Model Saved ============= ");
+            Console.WriteLine("");
+            Console.WriteLine("");
         }
 
         private static void BuildTrainEvaluateAndSaveModel(MLContext mlContext)
